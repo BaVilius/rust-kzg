@@ -241,25 +241,57 @@ pub trait DAS<B: EcBackend, const FIELD_ELEMENTS_PER_CELL: usize, P: Preset> {
             fft_settings,
         )?;
 
-        // compute cells
-        if let Some(cells) = cells {
-            cells
-                .as_flattened_mut()
-                .clone_from_slice(&fft_settings.fft_fr(&poly_monomial, false)?);
+        #[cfg(feature = "parallel")]
+        {
+            if let Some(cells) = cells {
+                let cell_data = fft_settings.fft_fr(&poly_monomial, false)?;
+                let mut cell_data = cell_data
+                    .into_par_iter()
+                    .map(|mut data| {
+                        reverse_bit_order(&mut [data])?;
+                        data
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
 
-            reverse_bit_order(cells.as_flattened_mut())?;
-        };
+                cells.as_flattened_mut().clone_from_slice(&cell_data);
+            }
 
-        // compute proofs
-        if let Some(proofs) = proofs {
-            let result = compute_fk20_proofs::<FIELD_ELEMENTS_PER_CELL, B>(
-                &poly_monomial,
-                P::FIELD_ELEMENTS_PER_BLOB,
-                fft_settings,
-                self.kzg_settings(),
-            )?;
-            proofs.clone_from_slice(&result);
-            reverse_bit_order(proofs)?;
+            if let Some(proofs) = proofs {
+                let mut result = compute_fk20_proofs::<FIELD_ELEMENTS_PER_CELL, B>(
+                    &poly_monomial,
+                    P::FIELD_ELEMENTS_PER_BLOB,
+                    fft_settings,
+                    self.kzg_settings(),
+                )?;
+
+                result
+                    .par_iter_mut()
+                    .try_for_each(|proof| reverse_bit_order(&mut [proof]))?;
+
+                proofs.clone_from_slice(&result);
+            }
+        }
+
+        #[cfg(not(feature = "parallel"))]
+        {
+            if let Some(cells) = cells {
+                cells
+                    .as_flattened_mut()
+                    .clone_from_slice(&fft_settings.fft_fr(&poly_monomial, false)?);
+
+                reverse_bit_order(cells.as_flattened_mut())?;
+            };
+
+            if let Some(proofs) = proofs {
+                let result = compute_fk20_proofs::<FIELD_ELEMENTS_PER_CELL, B>(
+                    &poly_monomial,
+                    P::FIELD_ELEMENTS_PER_BLOB,
+                    fft_settings,
+                    self.kzg_settings(),
+                )?;
+                proofs.clone_from_slice(&result);
+                reverse_bit_order(proofs)?;
+            }
         }
 
         Ok(())
