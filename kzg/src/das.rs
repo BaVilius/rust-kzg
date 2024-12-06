@@ -244,14 +244,11 @@ pub trait DAS<B: EcBackend, const FIELD_ELEMENTS_PER_CELL: usize, P: Preset> {
         #[cfg(feature = "parallel")]
         {
             if let Some(cells) = cells {
-                let cell_data = fft_settings.fft_fr(&poly_monomial, false)?;
-                let mut cell_data = cell_data
-                    .into_par_iter()
-                    .map(|mut data| {
-                        reverse_bit_order(&mut [data])?;
-                        data
-                    })
-                    .collect::<Result<Vec<_>, _>>()?;
+                let mut cell_data = fft_settings.fft_fr(&poly_monomial, false)?;
+
+                cell_data
+                    .par_iter_mut()
+                    .try_for_each(|data| reverse_bit_order(std::slice::from_ref(data)))?;
 
                 cells.as_flattened_mut().clone_from_slice(&cell_data);
             }
@@ -266,7 +263,7 @@ pub trait DAS<B: EcBackend, const FIELD_ELEMENTS_PER_CELL: usize, P: Preset> {
 
                 result
                     .par_iter_mut()
-                    .try_for_each(|proof| reverse_bit_order(&mut [proof]))?;
+                    .try_for_each(|proof| reverse_bit_order(std::slice::from_ref(proof)))?;
 
                 proofs.clone_from_slice(&result);
             }
