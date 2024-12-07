@@ -268,11 +268,12 @@ pub trait DAS<B: EcBackend, const FIELD_ELEMENTS_PER_CELL: usize, P: Preset> {
                     self.kzg_settings(),
                 )?;
 
-                proofs.par_iter_mut().zip(fk20_proofs.par_iter()).for_each(
-                    |(proof, result_proof)| {
-                        *proof = *result_proof;
-                    },
-                );
+                proofs
+                    .par_iter_mut()
+                    .zip(fk20_proofs.into_par_iter()) // Consumes fk20_proofs
+                    .for_each(|(proof, result_proof)| {
+                        *proof = result_proof; // Move ownership directly
+                    });
 
                 reverse_bit_order(proofs)?;
             }
